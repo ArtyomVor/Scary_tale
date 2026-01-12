@@ -1,0 +1,173 @@
+import arcade
+import math
+import random
+
+SCREEN_WIDTH = 1280
+SCREEN_HEIGHT = 720
+SCREEN_TITLE = "ЭХО ТЕНИ: ЗАПРЕТНАЯ ЗОНА"
+
+# Границы мира
+WORLD_LEFT = -500
+WORLD_RIGHT = 2000
+MIN_X_LIMIT = 25  # Та самая координата, левее которой нельзя
+
+
+class GameView(arcade.View):
+    def __init__(self):
+        super().__init__()
+        self.player_x = 200
+        self.player_y = 130
+        self.change_x = 0
+        self.change_y = 0
+        self.is_on_ground = True
+        self.walk_anim = 0
+
+        self.camera_x = 0
+
+        # Квест
+        self.has_item = False
+        self.item_placed = False
+        self.lever_pulled = False
+        self.gate_y = 130
+
+        self.LEVER_X = 500
+        self.ITEM_X = 1200
+        self.GATE_X = 1280
+
+        random.seed(42)
+        self.trees = [(random.randint(WORLD_LEFT, WORLD_RIGHT), random.randint(400, 650)) for _ in range(40)]
+        self.grass = [(x, random.randint(15, 30)) for x in range(WORLD_LEFT, WORLD_RIGHT, 30)]
+
+    def draw_lars(self, x, y):
+        breath = math.sin(arcade.get_window().time * 2) * 2
+        leg_off = 0
+        if abs(self.change_x) > 0:
+            self.walk_anim += 0.2
+            leg_off = math.sin(self.walk_anim * 5) * 10
+
+        base_y = y - 20
+        arcade.draw_line(x - 6, base_y, x - 6, base_y - 40 + leg_off, (160, 160, 160), 3)
+        arcade.draw_line(x + 6, base_y, x + 6, base_y - 40 - leg_off, (160, 160, 160), 3)
+        arcade.draw_rect_filled(arcade.rect.XYWH(x, base_y + 15 + breath / 2, 32, 45), (190, 190, 200))
+
+        if self.has_item:
+            arcade.draw_line(x, base_y + 15, x + 15, base_y + 20, (190, 190, 200), 4)
+            arcade.draw_rect_filled(arcade.rect.XYWH(x + 15, base_y + 25, 10, 20), (255, 80, 80))
+
+        arcade.draw_circle_filled(x, base_y + 55 + breath, 26, (210, 210, 215))
+        arcade.draw_circle_filled(x - 9, base_y + 55 + breath, 4, (20, 20, 30))
+        arcade.draw_circle_filled(x + 9, base_y + 55 + breath, 4, (20, 20, 30))
+
+    def on_draw(self):
+        self.clear()
+        arcade.set_background_color((15, 17, 22))
+
+        # Камера
+        self.camera_x = max(WORLD_LEFT, min(self.player_x - SCREEN_WIDTH / 2, WORLD_RIGHT - SCREEN_WIDTH))
+        arcade.get_window().ctx.projection_2d = (self.camera_x, self.camera_x + SCREEN_WIDTH, 0, SCREEN_HEIGHT)
+
+        # 1. Задний план
+        for tx, th in self.trees:
+            p_x = tx + (self.camera_x * 0.1)
+            arcade.draw_triangle_filled(p_x, 80, p_x + 40, 80, p_x + 20, 80 + th, (10, 12, 15))
+
+        # 2. Земля
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH((WORLD_LEFT + WORLD_RIGHT) / 2, 40, (WORLD_RIGHT - WORLD_LEFT) + 500, 80), (5, 5, 10))
+        for gx, gh in self.grass:
+            arcade.draw_triangle_filled(gx, 80, gx + 20, 80, gx + 10, 80 + gh, (5, 5, 10))
+
+        # 3. Деталь (Луч только здесь!)
+        if not self.has_item and not self.item_placed:
+            # Свечение исчезает, как только деталь поднята
+            arcade.draw_triangle_filled(self.ITEM_X - 30, 720, self.ITEM_X + 30, 720, self.ITEM_X, 100,
+                                        (255, 255, 255, 15))
+            arcade.draw_rect_filled(arcade.rect.XYWH(self.ITEM_X, 100, 20, 20), (255, 80, 80))
+            if abs(self.player_x - self.ITEM_X) < 100:
+                arcade.draw_text("E: Взять", self.ITEM_X, 150, arcade.color.WHITE, 12, anchor_x="center")
+
+        # 4. Рычаг (Без луча)
+        arcade.draw_rect_filled(arcade.rect.XYWH(self.LEVER_X, 95, 40, 30), (35, 35, 40))
+        if abs(self.player_x - self.LEVER_X) < 100:
+            if self.has_item:
+                hint = "Q: Вставить рукоятку"
+            elif self.item_placed and not self.lever_pulled:
+                hint = "E: Потянуть"
+            elif self.lever_pulled:
+                hint = "Механизм активирован"
+            else:
+                hint = "Чего-то не хватает..."
+            arcade.draw_text(hint, self.LEVER_X, 200, (200, 180, 50), 14, anchor_x="center")
+
+        if self.item_placed:
+            angle = 35 if not self.lever_pulled else -35
+            arcade.draw_line(self.LEVER_X, 100, self.LEVER_X + math.sin(math.radians(angle)) * 60,
+                             100 + math.cos(math.radians(angle)) * 60, (180, 50, 50), 6)
+
+        # 5. Ворота
+        arcade.draw_rect_filled(arcade.rect.XYWH(self.GATE_X, self.gate_y + 150, 50, 400), (30, 30, 35))
+
+        # 6. Игрок
+        self.draw_lars(self.player_x, self.player_y)
+
+        # UI
+        arcade.get_window().ctx.projection_2d = (0, SCREEN_WIDTH, 0, SCREEN_HEIGHT)
+        if self.player_x <= MIN_X_LIMIT + 50:
+            arcade.draw_text("ТАМ СЛИШКОМ ТЕМНО...", SCREEN_WIDTH / 2, 100, (150, 50, 50), 20, anchor_x="center",
+                             bold=True)
+
+        if self.has_item:
+            arcade.draw_text("В РУКАХ: Рукоятка", 50, 680, (255, 80, 80), 16, bold=True)
+
+    def on_update(self, delta_time):
+        self.player_x += self.change_x
+        self.player_y += self.change_y
+
+        if self.player_y > 130:
+            self.change_y -= 0.8
+        else:
+            self.player_y, self.change_y = 130, 0
+
+        # --- НОВАЯ ГРАНИЦА СЛЕВА ---
+        if self.player_x < MIN_X_LIMIT:
+            self.player_x = MIN_X_LIMIT
+
+        if self.player_x > WORLD_RIGHT - 50:
+            self.player_x = WORLD_RIGHT - 50
+
+        if not self.lever_pulled and self.player_x > self.GATE_X - 45:
+            self.player_x = self.GATE_X - 45
+
+        if self.lever_pulled and self.gate_y < 600:
+            self.gate_y += 5
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.A:
+            self.change_x = -6
+        elif key == arcade.key.D:
+            self.change_x = 6
+        elif key == arcade.key.W and self.player_y <= 135:
+            self.change_y = 16
+        elif key == arcade.key.E:
+            if abs(self.player_x - self.ITEM_X) < 60 and not self.has_item and not self.item_placed:
+                self.has_item = True
+            elif abs(self.player_x - self.LEVER_X) < 100 and self.item_placed:
+                self.lever_pulled = True
+        elif key == arcade.key.Q:
+            if abs(self.player_x - self.LEVER_X) < 100 and self.has_item:
+                self.has_item = False
+                self.item_placed = True
+
+    def on_key_release(self, key, modifiers):
+        if key in (arcade.key.A, arcade.key.D): self.change_x = 0
+
+
+def main():
+    window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    game = GameView()
+    window.show_view(game)
+    arcade.run()
+
+
+if __name__ == "__main__":
+    main()
