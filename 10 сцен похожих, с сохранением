@@ -1,0 +1,707 @@
+import arcade
+import math
+import random
+import json
+import os
+
+SCREEN_WIDTH = 1280
+SCREEN_HEIGHT = 720
+SCREEN_TITLE = "ЭХО ТЕНИ: КЛАССИКА"
+
+# Цвета
+COLOR_BG = (15, 17, 22)
+COLOR_GROUND = (5, 5, 10)
+COLOR_TREE = (10, 12, 15)
+COLOR_ITEM = (255, 80, 80)
+COLOR_CRYSTAL = (100, 200, 255)
+COLOR_LAVA = (255, 100, 50)
+COLOR_ICE = (180, 230, 255)
+COLOR_PLATFORM = (70, 70, 80)
+COLOR_PLATFORM_TOP = (90, 90, 100)  # Верх платформы
+
+# Границы мира
+WORLD_LEFT = 0
+WORLD_RIGHT = 1200  # Еще меньше мир, чтобы стена была ближе
+
+
+# --- СИСТЕМА СОХРАНЕНИЙ ---
+def save_game(unlocked_level):
+    try:
+        with open("savegame_classic.json", "w") as f:
+            json.dump({"unlocked": unlocked_level}, f)
+    except:
+        pass
+
+
+def load_game():
+    if os.path.exists("savegame_classic.json"):
+        try:
+            with open("savegame_classic.json", "r") as f:
+                return json.load(f).get("unlocked", 1)
+        except:
+            pass
+    return 1
+
+
+# --- ГЛАВНОЕ МЕНЮ ---
+class MainMenuView(arcade.View):
+    def on_show_view(self):
+        arcade.set_background_color(COLOR_BG)
+        self.unlocked = load_game()
+
+    def on_draw(self):
+        self.clear()
+
+        # Рисуем простой фон (землю)
+        arcade.draw_rect_filled(arcade.rect.XYWH(SCREEN_WIDTH // 2, 40, SCREEN_WIDTH, 80), COLOR_GROUND)
+
+        # Рисуем несколько деревьев на заднем плане
+        for i in range(10):
+            x = i * 130 + 50
+            h = 200 + math.sin(i * 0.5) * 50
+            arcade.draw_triangle_filled(x, 80, x + 100, 80, x + 50, h, COLOR_TREE)
+
+        # Заголовок
+        arcade.draw_text("ЭХО ТЕНИ", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100,
+                         arcade.color.WHITE, 50, anchor_x="center")
+
+        # Кнопка старта
+        arcade.draw_rect_filled(arcade.rect.XYWH(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, 200, 50), (30, 80, 150))
+        arcade.draw_text("СТАРТ", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 10,
+                         arcade.color.WHITE, 25, anchor_x="center")
+
+        # Кнопка выбора уровня
+        arcade.draw_rect_filled(arcade.rect.XYWH(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80, 200, 50), (50, 50, 80))
+        arcade.draw_text("ВЫБОР УРОВНЯ", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 90,
+                         arcade.color.WHITE, 18, anchor_x="center")
+
+        # Прогресс
+        arcade.draw_text(f"Прогресс: {self.unlocked}/10 уровней", SCREEN_WIDTH // 2, 100,
+                         (150, 150, 150), 16, anchor_x="center")
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        # Проверка нажатия на кнопку СТАРТ
+        if SCREEN_WIDTH // 2 - 100 <= x <= SCREEN_WIDTH // 2 + 100:
+            if SCREEN_HEIGHT // 2 - 25 <= y <= SCREEN_HEIGHT // 2 + 25:
+                start_game(self.window, 1)
+            elif SCREEN_HEIGHT // 2 - 105 <= y <= SCREEN_HEIGHT // 2 - 55:
+                self.window.show_view(LevelSelectView())
+
+
+# --- МЕНЮ ВЫБОРА УРОВНЯ ---
+class LevelSelectView(arcade.View):
+    def on_show_view(self):
+        arcade.set_background_color(COLOR_BG)
+        self.unlocked = load_game()
+        self.selected_level = 1
+
+    def on_draw(self):
+        self.clear()
+
+        # Заголовок
+        arcade.draw_text("ВЫБЕРИТЕ УРОВЕНЬ", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100,
+                         arcade.color.WHITE, 40, anchor_x="center")
+
+        # Сетка уровней 5x2
+        for i in range(10):
+            row = i // 5
+            col = i % 5
+            x = 200 + col * 200
+            y = 500 - row * 150
+
+            level_num = i + 1
+
+            # Рамка уровня
+            if level_num <= self.unlocked:
+                color = (30, 100, 200) if level_num == self.selected_level else (50, 50, 80)
+                arcade.draw_rect_filled(arcade.rect.XYWH(x, y, 80, 80), color)
+                arcade.draw_text(str(level_num), x, y, arcade.color.WHITE, 30, anchor_x="center")
+            else:
+                arcade.draw_rect_filled(arcade.rect.XYWH(x, y, 80, 80), (20, 20, 20))
+                arcade.draw_text("X", x, y, (100, 0, 0), 30, anchor_x="center")
+
+        # Кнопки управления
+        arcade.draw_text("Стрелки: Выбор уровня", SCREEN_WIDTH // 2, 150,
+                         (150, 150, 150), 18, anchor_x="center")
+        arcade.draw_text("ENTER: Играть   ESC: Назад", SCREEN_WIDTH // 2, 120,
+                         (150, 150, 150), 18, anchor_x="center")
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.RIGHT:
+            if self.selected_level < min(self.unlocked, 10):
+                self.selected_level += 1
+        elif key == arcade.key.LEFT:
+            if self.selected_level > 1:
+                self.selected_level -= 1
+        elif key == arcade.key.UP:
+            if self.selected_level > 5:
+                self.selected_level -= 5
+        elif key == arcade.key.DOWN:
+            if self.selected_level <= 5:
+                self.selected_level += 5
+        elif key == arcade.key.ENTER or key == arcade.key.SPACE:
+            if self.selected_level <= self.unlocked:
+                start_game(self.window, self.selected_level)
+        elif key == arcade.key.ESCAPE:
+            self.window.show_view(MainMenuView())
+
+
+# --- ОСНОВНАЯ ИГРА ---
+class GameView(arcade.View):
+    def __init__(self, level=1):
+        super().__init__()
+        self.level = level
+
+        # Игрок
+        self.player_x = 200
+        self.player_y = 130
+        self.change_x = 0
+        self.change_y = 0
+        self.walk_anim = 0
+
+        self.camera_x = 0
+
+        # Квестовые предметы
+        self.has_item = False
+        self.item_placed = False
+        self.lever_pulled = False
+
+        # Платформы и препятствия
+        self.platforms = []  # Каждая платформа: (x, y, width, height)
+        self.enemies = []
+        self.keys_collected = 0
+
+        # Настройки уровня
+        self.setup_level(level)
+
+        # Генерация леса для первого уровня
+        random.seed(42)
+        self.trees = []
+        if level == 1:
+            for _ in range(25):
+                x = random.randint(WORLD_LEFT, WORLD_RIGHT)
+                h = random.randint(400, 600)
+                self.trees.append((x, h))
+            self.trees.sort(key=lambda t: t[0])
+
+        # Трава
+        self.grass = [(x, random.randint(15, 30)) for x in range(WORLD_LEFT, WORLD_RIGHT, 30)]
+
+    def setup_level(self, level):
+        # Общие настройки - дверь БЛИЖЕ к игроку!
+        self.gate_x = 1000  # Еще ближе!
+        self.gate_y = 130
+
+        # Уровень 1: Лес - найти рукоятку для рычага
+        if level == 1:
+            self.item_x = 700
+            self.lever_x = 400
+            self.platforms = []
+
+        # Уровень 2: Прыжки через пропасть
+        elif level == 2:
+            self.player_x = 200
+            self.item_x = 800
+            self.lever_x = 500
+            self.platforms = [
+                (300, 200, 100, 20),
+                (450, 280, 100, 20),
+                (600, 200, 100, 20),
+                (750, 280, 100, 20)
+            ]
+
+        # Уровень 3: Кристальная пещера
+        elif level == 3:
+            self.player_x = 200
+            self.item_x = 900
+            self.lever_x = 600
+            self.platforms = [
+                (350, 180, 150, 20),
+                (550, 250, 150, 20),
+                (750, 180, 150, 20),
+                (950, 250, 150, 20)
+            ]
+            self.crystals = [(400, 210), (600, 280), (800, 210), (1000, 280)]
+
+        # Уровень 4: Лава
+        elif level == 4:
+            self.player_x = 200
+            self.item_x = 1000
+            self.lever_x = 700
+            self.platforms = [
+                (350, 200, 100, 20),
+                (500, 300, 100, 20),
+                (650, 200, 100, 20),
+                (800, 300, 100, 20),
+                (950, 200, 100, 20)
+            ]
+            # Лава - опасные зоны
+            self.lava = [(300, 80, 200, 40), (600, 80, 200, 40), (900, 80, 200, 40)]
+
+        # Уровень 5: Ледяные платформы
+        elif level == 5:
+            self.player_x = 200
+            self.item_x = 900
+            self.lever_x = 550
+            # Широкие ледяные платформы
+            self.platforms = [
+                (350, 200, 200, 15),
+                (600, 280, 200, 15),
+                (850, 200, 200, 15)
+            ]
+            self.on_ice = False
+
+        # Уровень 6: Темный лес с факелом
+        elif level == 6:
+            self.player_x = 200
+            self.item_x = 800
+            self.lever_x = 450
+            self.has_torch = False
+            self.torch_x = 400
+            self.platforms = [
+                (300, 180, 120, 20),
+                (500, 250, 120, 20),
+                (700, 180, 120, 20)
+            ]
+
+        # Уровень 7: Пауки
+        elif level == 7:
+            self.player_x = 200
+            self.item_x = 900
+            self.lever_x = 600
+            self.platforms = [
+                (350, 200, 100, 20),
+                (550, 280, 100, 20),
+                (750, 200, 100, 20)
+            ]
+            # Пауки движутся по платформам
+            self.enemies = [
+                [450, 220, 1.5, 350, 450],  # На первой платформе
+                [750, 220, 1.5, 750, 850]  # На третьей платформе
+            ]
+
+        # Уровень 8: Ключи (нужно собрать 3 ключа чтобы открыть дверь)
+        elif level == 8:
+            self.player_x = 200
+            self.item_x = -9999
+            self.lever_x = -9999
+            self.keys_needed = 3
+            self.keys = [(400, 200), (700, 280), (1000, 200)]
+            self.platforms = [
+                (300, 180, 100, 20),
+                (500, 260, 100, 20),
+                (700, 180, 100, 20),
+                (900, 260, 100, 20)
+            ]
+
+        # Уровень 9: Лабиринт платформ
+        elif level == 9:
+            self.player_x = 200
+            self.item_x = 1000
+            self.lever_x = 700
+            self.platforms = [
+                (300, 200, 80, 20),
+                (420, 280, 80, 20),
+                (540, 200, 80, 20),
+                (660, 120, 80, 20),
+                (780, 200, 80, 20),
+                (900, 280, 80, 20),
+                (1020, 200, 80, 20)
+            ]
+
+        # Уровень 10: Финальный вызов
+        elif level == 10:
+            self.player_x = 200
+            self.item_x = 1000
+            self.lever_x = 650
+            self.platforms = [
+                (350, 200, 80, 20),
+                (500, 300, 80, 20),
+                (650, 400, 80, 20),
+                (800, 300, 80, 20),
+                (950, 200, 80, 20)
+            ]
+
+    def draw_platform(self, x, y, width, height):
+        """Рисует платформу с правильной текстурой"""
+        # Хитбокс платформы НИЖЕ - на 15 пикселей ниже чем видимая часть
+        hitbox_y = y - 15
+
+        # Основа платформы (ниже)
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(x + width / 2, y - height / 4, width, height / 2),
+            COLOR_PLATFORM
+        )
+        # Верх платформы (выше - видимая часть)
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(x + width / 2, y + height / 4, width, height / 2),
+            COLOR_PLATFORM_TOP
+        )
+
+        return hitbox_y  # Возвращаем Y координату хитбокса
+
+    def draw_lars(self, x, y):
+        # Классический Ларс
+        breath = math.sin(arcade.get_window().time * 2) * 2
+        leg_off = 0
+        if abs(self.change_x) > 0:
+            self.walk_anim += 0.2
+            leg_off = math.sin(self.walk_anim * 5) * 10
+
+        base_y = y - 20
+        arcade.draw_line(x - 6, base_y, x - 6, base_y - 40 + leg_off, (160, 160, 160), 3)
+        arcade.draw_line(x + 6, base_y, x + 6, base_y - 40 - leg_off, (160, 160, 160), 3)
+        arcade.draw_rect_filled(arcade.rect.XYWH(x, base_y + 15 + breath / 2, 32, 45), (190, 190, 200))
+
+        # Если предмет в руках
+        if self.has_item and self.level != 8:
+            arcade.draw_rect_filled(arcade.rect.XYWH(x + 15, base_y + 20, 10, 10), COLOR_ITEM)
+
+        # Если факел в руках
+        if self.level == 6 and self.has_torch:
+            arcade.draw_circle_filled(x + 20, base_y + 40, 15, (255, 200, 50))
+
+        arcade.draw_circle_filled(x, base_y + 55 + breath, 26, (210, 210, 215))
+        arcade.draw_circle_filled(x - 9, base_y + 55 + breath, 4, (20, 20, 30))
+        arcade.draw_circle_filled(x + 9, base_y + 55 + breath, 4, (20, 20, 30))
+
+    def on_draw(self):
+        self.clear()
+        arcade.set_background_color(COLOR_BG)
+
+        # КАМЕРА
+        target_cam = self.player_x - SCREEN_WIDTH / 2
+        if target_cam < WORLD_LEFT: target_cam = WORLD_LEFT
+        if target_cam > WORLD_RIGHT - SCREEN_WIDTH: target_cam = WORLD_RIGHT - SCREEN_WIDTH
+        self.camera_x += (target_cam - self.camera_x) * 0.1
+
+        # Устанавливаем вид с учетом камеры
+        arcade.get_window().ctx.projection_2d = (self.camera_x, self.camera_x + SCREEN_WIDTH, 0, SCREEN_HEIGHT)
+
+        # 1. Задний план (Лес для первого уровня)
+        if self.level == 1:
+            for tx, th in self.trees:
+                p_x = tx + (self.camera_x * 0.05)
+                arcade.draw_triangle_filled(p_x, 80, p_x + 50, 80, p_x + 25, 80 + th, COLOR_TREE)
+
+        # 2. Земля
+        ground_width = WORLD_RIGHT - WORLD_LEFT + 1000
+        arcade.draw_rect_filled(arcade.rect.XYWH((WORLD_LEFT + WORLD_RIGHT) // 2, 40, ground_width, 80), COLOR_GROUND)
+
+        for gx, gh in self.grass:
+            arcade.draw_triangle_filled(gx, 80, gx + 20, 80, gx + 10, 80 + gh, COLOR_GROUND)
+
+        # 3. Платформы с правильной текстурой
+        self.platform_hitboxes = []  # Сохраняем хитбоксы для физики
+        for px, py, pw, ph in self.platforms:
+            hitbox_y = self.draw_platform(px, py, pw, ph)
+            self.platform_hitboxes.append((px, hitbox_y, pw, ph))
+
+        # 4. Кристаллы (уровень 3)
+        if self.level == 3 and hasattr(self, 'crystals'):
+            for cx, cy in self.crystals:
+                arcade.draw_triangle_filled(cx, cy, cx + 20, cy, cx + 10, cy + 40, COLOR_CRYSTAL)
+
+        # 5. Лава (уровень 4)
+        if self.level == 4 and hasattr(self, 'lava'):
+            for lx, ly, lw, lh in self.lava:
+                arcade.draw_rect_filled(arcade.rect.XYWH(lx + lw / 2, ly + lh / 2, lw, lh), COLOR_LAVA)
+                # Пузырьки лавы
+                for i in range(3):
+                    bx = lx + lw / 2 + math.sin(arcade.get_window().time * 3 + i) * 30
+                    arcade.draw_circle_filled(bx, ly + lh + 5, 8, (255, 150, 50))
+
+        # 6. Факел (уровень 6)
+        if self.level == 6 and hasattr(self, 'torch_x') and not self.has_torch:
+            arcade.draw_rect_filled(arcade.rect.XYWH(self.torch_x, 100, 10, 30), (100, 100, 100))
+            arcade.draw_circle_filled(self.torch_x, 130, 15, (255, 200, 50))
+
+        # 7. Пауки (уровень 7)
+        if self.level == 7:
+            for enemy in self.enemies:
+                # Тело паука
+                arcade.draw_circle_filled(enemy[0], enemy[1], 15, (40, 40, 40))
+                # Ноги
+                for i in range(4):
+                    angle = i * math.pi / 2 + arcade.get_window().time * 2
+                    leg_x = enemy[0] + math.cos(angle) * 20
+                    leg_y = enemy[1] + math.sin(angle) * 20
+                    arcade.draw_line(enemy[0], enemy[1], leg_x, leg_y, (40, 40, 40), 2)
+
+        # 8. Ключи (уровень 8)
+        if self.level == 8 and hasattr(self, 'keys'):
+            for i, (kx, ky) in enumerate(self.keys):
+                if i >= self.keys_collected:
+                    arcade.draw_rect_filled(arcade.rect.XYWH(kx, ky, 20, 10), (255, 215, 0))
+                    arcade.draw_circle_filled(kx, ky + 8, 6, (255, 215, 0))
+
+        # 9. Деталь (кроме уровня 8)
+        if self.level != 8:
+            if not self.has_item and not self.item_placed and self.level != 10:
+                # Луч света
+                arcade.draw_triangle_filled(self.item_x - 20, 720, self.item_x + 20, 720, self.item_x, 100,
+                                            (255, 255, 255, 10))
+                arcade.draw_rect_filled(arcade.rect.XYWH(self.item_x, 100, 20, 20), COLOR_ITEM)
+                if abs(self.player_x - self.item_x) < 80:
+                    arcade.draw_text("E: Взять", self.item_x, 140, arcade.color.WHITE, 12, anchor_x="center")
+
+        # 10. Рычаг (кроме уровня 8)
+        if self.level != 8 and self.level != 10:
+            arcade.draw_rect_filled(arcade.rect.XYWH(self.lever_x, 95, 40, 30), (50, 50, 60))
+
+            # Подсказки над рычагом
+            if abs(self.player_x - self.lever_x) < 80:
+                if self.lever_pulled:
+                    msg = "Открыто"
+                elif self.item_placed:
+                    msg = "E: Потянуть"
+                elif self.has_item:
+                    msg = "Q: Вставить"
+                else:
+                    msg = "Нет рукоятки"
+                arcade.draw_text(msg, self.lever_x, 180, (255, 200, 50), 14, anchor_x="center")
+
+            if self.item_placed:
+                angle = 35 if not self.lever_pulled else -35
+                rad = math.radians(angle)
+                arcade.draw_line(self.lever_x, 100, self.lever_x + math.sin(rad) * 60, 100 + math.cos(rad) * 60,
+                                 (200, 50, 50), 6)
+
+        # 11. Ворота (ближе!)
+        if self.level != 10:
+            arcade.draw_rect_filled(arcade.rect.XYWH(self.gate_x, self.gate_y + 150, 50, 400), (30, 30, 35))
+
+        # 12. Игрок
+        self.draw_lars(self.player_x, self.player_y)
+
+        # Сбрасываем вид для UI
+        arcade.get_window().ctx.projection_2d = (0, SCREEN_WIDTH, 0, SCREEN_HEIGHT)
+
+        # UI элементы
+        # Ограничитель слева
+        if self.player_x < 20:
+            arcade.draw_text("ТАМ СЛИШКОМ ТЕМНО...", SCREEN_WIDTH // 2, 100, (200, 50, 50), 20, anchor_x="center")
+
+        # Информация об уровне
+        arcade.draw_text(f"УРОВЕНЬ {self.level}", 20, SCREEN_HEIGHT - 30, (200, 200, 255), 18)
+
+        # Предмет в руках
+        if self.has_item and self.level != 8:
+            arcade.draw_text("ПРЕДМЕТ: Рукоятка (Q - положить)", 20, SCREEN_HEIGHT - 60, arcade.color.WHITE, 14)
+
+        # Ключи (уровень 8)
+        if self.level == 8:
+            arcade.draw_text(f"КЛЮЧИ: {self.keys_collected}/{self.keys_needed}", 20, SCREEN_HEIGHT - 60, (255, 215, 0),
+                             16)
+
+    def on_update(self, delta_time):
+        self.player_x += self.change_x
+        self.player_y += self.change_y
+
+        # Физика и коллизии
+
+        # 1. Проверка коллизии с платформами (используем хитбоксы ниже!)
+        on_platform = False
+        if hasattr(self, 'platform_hitboxes'):
+            for px, phy, pw, ph in self.platform_hitboxes:  # phy - Y хитбокса
+                # Хитбокс платформы НИЖЕ чем видимая часть
+                platform_top = phy
+                player_bottom = self.player_y - 20
+
+                # Если игрок падает и находится над платформой
+                if (self.change_y <= 0 and
+                        player_bottom <= platform_top + 5 and
+                        player_bottom >= platform_top - 15 and
+                        px <= self.player_x <= px + pw):
+                    # Ставим игрока точно на платформу
+                    self.player_y = phy + 20 + 5  # +5 чтобы не застревать
+                    self.change_y = 0
+                    on_platform = True
+                    break
+
+        # 2. Гравитация
+        if not on_platform and self.player_y > 130:
+            self.change_y -= 0.8
+        elif self.player_y <= 130 and not on_platform:
+            self.player_y = 130
+            self.change_y = 0
+
+        # 3. Движение врагов
+        if self.level == 7:
+            for enemy in self.enemies:
+                enemy[0] += enemy[2]
+                if enemy[0] > enemy[4] or enemy[0] < enemy[3]:
+                    enemy[2] *= -1
+
+                # Коллизия с врагом
+                if abs(self.player_x - enemy[0]) < 30 and abs(self.player_y - enemy[1]) < 40:
+                    # Сброс позиции
+                    self.player_x = 200
+                    self.player_y = 130
+                    self.change_x = 0
+                    self.change_y = 0
+
+        # 4. Коллизия с лавой
+        if self.level == 4 and hasattr(self, 'lava'):
+            for lx, ly, lw, lh in self.lava:
+                if (lx < self.player_x < lx + lw and
+                        ly < self.player_y - 20 < ly + lh):
+                    # Сброс позиции
+                    self.player_x = 200
+                    self.player_y = 130
+                    self.change_x = 0
+                    self.change_y = 0
+
+        # 5. Скольжение по льду
+        if self.level == 5:
+            self.on_ice = False
+            if hasattr(self, 'platform_hitboxes'):
+                for px, phy, pw, ph in self.platform_hitboxes:
+                    platform_top = phy
+                    player_bottom = self.player_y - 20
+
+                    if (player_bottom <= platform_top + 5 and
+                            player_bottom >= platform_top - 15 and
+                            px <= self.player_x <= px + pw):
+
+                        self.on_ice = True
+                        # На льду двигаемся с инерцией
+                        if abs(self.change_x) < 8:
+                            self.change_x *= 1.05
+                        break
+
+            if not self.on_ice:
+                # Вне льда - нормальное трение
+                self.change_x *= 0.9
+                if abs(self.change_x) < 0.5:
+                    self.change_x = 0
+
+        # 6. Границы мира
+        if self.player_x < 0:
+            self.player_x = 0
+            self.change_x = 0
+        if self.player_x > WORLD_RIGHT:
+            self.player_x = WORLD_RIGHT
+            self.change_x = 0
+
+        # 7. Коллизия с воротами (кроме уровня 8 и 10)
+        if self.level != 8 and self.level != 10:
+            if not self.lever_pulled and self.player_x > self.gate_x - 30:
+                self.player_x = self.gate_x - 30
+                self.change_x = 0
+
+            if self.lever_pulled and self.gate_y < 600:
+                self.gate_y += 8
+
+            # Переход на следующий уровень
+            if (self.player_x > self.gate_x + 50 and
+                    self.lever_pulled and
+                    self.gate_y >= 600):
+                next_level = self.level + 1
+                if next_level <= 10:
+                    save_game(next_level)
+                    start_game(self.window, next_level)
+
+        # 8. Уровень 8: открытие двери ключами
+        if self.level == 8:
+            # Дверь поднимается при собранных ключах
+            if self.keys_collected >= self.keys_needed and self.gate_y < 600:
+                self.gate_y += 8
+
+            # Блокируем проход пока дверь не поднялась
+            if self.gate_y < 600 and self.player_x > self.gate_x - 30:
+                self.player_x = self.gate_x - 30
+                self.change_x = 0
+
+            # Переход только когда дверь полностью открыта
+            if (self.player_x > self.gate_x + 50 and
+                    self.keys_collected >= self.keys_needed and
+                    self.gate_y >= 600):
+                next_level = self.level + 1
+                if next_level <= 10:
+                    save_game(next_level)
+                    start_game(self.window, next_level)
+
+        # 9. Уровень 10: финальный
+        if self.level == 10:
+            if self.player_x > self.gate_x - 30:
+                self.player_x = self.gate_x - 30
+                self.change_x = 0
+                if self.item_placed and not self.lever_pulled:
+                    # Победа!
+                    self.lever_pulled = True
+                    self.gate_y = 600
+
+    def on_key_press(self, key, modifiers):
+        # Движение
+        if key == arcade.key.A:
+            self.change_x = -6
+        elif key == arcade.key.D:
+            self.change_x = 6
+        elif (key == arcade.key.W or key == arcade.key.SPACE):
+            # Проверяем, стоит ли игрок на земле или платформе
+            on_surface = False
+            if self.player_y <= 135:
+                on_surface = True
+            elif hasattr(self, 'platform_hitboxes'):
+                for px, phy, pw, ph in self.platform_hitboxes:
+                    platform_top = phy
+                    player_bottom = self.player_y - 20
+                    if (abs(player_bottom - platform_top) < 20 and
+                            px <= self.player_x <= px + pw):
+                        on_surface = True
+                        break
+
+            if on_surface and self.change_y <= 0:
+                self.change_y = 15
+
+        # Действия
+        elif key == arcade.key.E:
+            if self.level != 8 and self.level != 10:
+                # Взять
+                if abs(self.player_x - self.item_x) < 80 and not self.has_item and not self.item_placed:
+                    self.has_item = True
+                # Потянуть
+                elif abs(self.player_x - self.lever_x) < 80 and self.item_placed:
+                    self.lever_pulled = True
+
+            # Взять факел
+            if self.level == 6 and hasattr(self, 'torch_x'):
+                if abs(self.player_x - self.torch_x) < 50 and not self.has_torch:
+                    self.has_torch = True
+
+            # Подобрать ключ
+            if self.level == 8 and hasattr(self, 'keys'):
+                for i, (kx, ky) in enumerate(self.keys):
+                    if i >= self.keys_collected and abs(self.player_x - kx) < 50:
+                        self.keys_collected += 1
+
+        elif key == arcade.key.Q:
+            if self.level != 8 and self.level != 10:
+                # Положить
+                if abs(self.player_x - self.lever_x) < 80 and self.has_item:
+                    self.has_item = False
+                    self.item_placed = True
+
+        elif key == arcade.key.ESCAPE:
+            self.window.show_view(MainMenuView())
+
+    def on_key_release(self, key, modifiers):
+        if key in (arcade.key.A, arcade.key.D):
+            self.change_x = 0
+
+
+def start_game(window, level):
+    game = GameView(level)
+    window.show_view(game)
+
+
+def main():
+    window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    menu = MainMenuView()
+    window.show_view(menu)
+    arcade.run()
+
+
+if __name__ == "__main__":
+    main()
