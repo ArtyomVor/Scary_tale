@@ -1,0 +1,543 @@
+import arcade
+import math
+import random
+import json
+import os
+import time
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, Any
+
+# =================================================================
+# 1. КОНСТАНТЫ И ГЛОБАЛЬНЫЕ НАСТРОЙКИ
+# =================================================================
+SCREEN_WIDTH = 1280
+SCREEN_HEIGHT = 720
+SCREEN_TITLE = "ЭХО: СИНГУЛЯРНОСТЬ [MASTER BUILD 1.0]"
+
+# Слои рендеринга
+LAYER_NAME_PLATFORMS = "Platforms"
+LAYER_NAME_DECOR = "Decor"
+LAYER_NAME_DANGER = "Danger"
+LAYER_NAME_PLAYER = "Player"
+LAYER_NAME_ITEMS = "Items"
+LAYER_NAME_TRIGGERS = "Triggers"
+
+# Физические параметры
+GRAVITY = 0.9
+PLAYER_JUMP_SPEED = 20
+PLAYER_MOVE_SPEED = 6
+PLAYER_SPRINT_SPEED = 10
+PLAYER_DASH_SPEED = 25
+FRICTION = 0.8
+AIR_RESISTANCE = 0.1
+
+# Цветовая схема (Dark Synth-Horror)
+COLOR_BG = (5, 5, 12)
+COLOR_PLAYER = (0, 255, 255)
+COLOR_DANGER = (255, 50, 50)
+COLOR_UI_TEXT = (200, 200, 220)
+COLOR_UI_ACCENT = (0, 200, 200, 150)
+
+# =================================================================
+# 2. БАЗА ДАННЫХ СЮЖЕТА (РАСШИРЕННАЯ)
+# =================================================================
+@dataclass
+class Choice:
+    text: str
+    next_node: str
+    impact_stability: float = 0.0
+    impact_trust: int = 0
+
+@dataclass
+class DialogueNode:
+    speaker: str
+    text: str
+    choices: List[Choice] = field(default_factory=list)
+    event_flag: Optional[str] = None
+
+STORY_DATA = {
+    "intro_1": DialogueNode(
+        "ОПЕРАТОР",
+        "Синхронизация нейросетей... 100%. Ныряльщик, добро пожаловать в 'Архив Архитектора'. "
+        "Твое тело осталось на поверхности, здесь — только твоя цифровая проекция. Ты меня слышишь?",
+        [
+            Choice("Слышу. Где я нахожусь?", "intro_2"),
+            Choice("Меньше слов, давай к делу.", "intro_fast", impact_trust=-1)
+        ]
+    ),
+    "intro_2": DialogueNode(
+        "ОПЕРАТОР",
+        "Это Сектор 0. Место, где хранятся базовые воспоминания человечества перед Коллапсом. "
+        "Твоя цель — Ядро Памяти в самом конце Архива. Иди вперед, я буду твоими глазами.",
+        [Choice("Выдвигаюсь.", "end_diag")]
+    ),
+    "intro_fast": DialogueNode(
+        "ОПЕРАТОР",
+        "Грубо, но эффективно. Ядро находится в 25 тысячах метров отсюда. Беги. Система защиты уже знает о тебе.",
+        [Choice("Понял.", "end_diag")]
+    ),
+    "echo_1": DialogueNode(
+        "ЭХО ПАМЯТИ",
+        "Стой... Ты живой? Я не видела искру сознания уже тысячи циклов. Зачем ты здесь? "
+        "Этот мир должен был умереть в тишине.",
+        [
+            Choice("Я пришел спасти то, что еще ценно.", "echo_mercy", impact_stability=5.0, impact_trust=2),
+            Choice("Я здесь только за кодом. Уйди с дороги.", "echo_harsh", impact_stability=-5.0)
+        ]
+    ),
+    "echo_mercy": DialogueNode(
+        "ЭХО ПАМЯТИ",
+        "Ценно... Память о боли тоже ценна? Если так — проходи. Я придержу системы безопасности на следующем этапе.",
+        [Choice("Благодарю.", "end_diag")]
+    ),
+    "echo_harsh": DialogueNode(
+        "ЭХО ПАМЯТИ",
+        "Код... Вы все ищете только цифры. Иди. Но 'Наблюдатель' в Секторе 3 не будет так добр, как я.",
+        [Choice("Мне всё равно.", "end_diag")]
+    ),
+    "watcher_pre": DialogueNode(
+        "ОПЕРАТОР",
+        "ВНИМАНИЕ! Ты в зоне видимости 'Наблюдателя'. Это гигантская антивирусная программа. "
+        "Слушай внимательно: когда небо краснеет — ЗАМИРАЙ. Любое движение — и тебя сотрут.",
+        [Choice("Я готов. Слежу за светом.", "end_diag")]
+    ),
+    "collapse_start": DialogueNode(
+        "СИСТЕМА",
+        "ОШИБКА 0x000F: КРИТИЧЕСКИЙ РАСПАД СЕКТОРА. АКТИВАЦИЯ ПРОТОКОЛА ОЧИСТКИ.",
+        [Choice("БЕЖАТЬ!!!", "end_diag")]
+    ),
+    "final_node": DialogueNode(
+        "ЯДРО",
+        "Ты здесь. Последний выбор. Удалить Архив навсегда, прекратив страдания Эхо, "
+        "или Перезапустить его, сохранив историю ценой своей личности?",
+        [
+            Choice("Перезапуск (Жертва)", "finish_good"),
+            Choice("Удаление (Свобода)", "finish_bad")
+        ]
+    )
+}
+
+# =================================================================
+# 3. ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ ЭФФЕКТОВ И СИСТЕМ
+# =================================================================
+class Particle:
+    """Индивидуальная частица для системы пыли и глитчей"""
+    def __init__(self, x, y, p_type="dust"):
+        self.x = x
+        self.y = y
+        self.type = p_type
+        self.vx = random.uniform(-1.5, 1.5)
+        self.vy = random.uniform(-0.5, 1.5)
+        self.life = 255
+        self.size = random.uniform(1, 4)
+        self.color = (0, 255, 255) if p_type == "dust" else (255, 50, 50)
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.life -= random.randint(3, 7)
+
+class EffectManager:
+    """Менеджер визуальных эффектов (тряска, глитчи)"""
+    def __init__(self):
+        self.shake_intensity = 0
+        self.shake_timer = 0
+        self.glitch_active = False
+        self.glitch_timer = 0
+
+    def trigger_shake(self, intensity, duration):
+        self.shake_intensity = intensity
+        self.shake_timer = duration
+
+    def trigger_glitch(self, duration):
+        self.glitch_active = True
+        self.glitch_timer = duration
+
+    def update(self, dt):
+        if self.shake_timer > 0: self.shake_timer -= dt
+        if self.glitch_timer > 0: self.glitch_timer -= dt
+        else: self.glitch_active = False
+
+# =================================================================
+# 4. КЛАСС ИГРОКА (DIVER)
+# =================================================================
+class Diver(arcade.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.width = 32
+        self.height = 58
+        self.sprinting = False
+        self.dashing = False
+        self.dash_timer = 0
+        self.facing_right = True
+        
+        # Анимационные параметры
+        self.anim_pulse = 0
+        self.trail = [] # Для эффекта послеобразия
+        
+    def update_animation(self, delta_time: float = 1/60):
+        self.anim_pulse += delta_time * 4
+        if abs(self.change_x) > 0.1:
+            self.facing_right = self.change_x > 0
+            
+        # Логика шлейфа (Ghost Trail)
+        if self.sprinting or self.dashing:
+            self.trail.append({'x': self.center_x, 'y': self.center_y, 'a': 150})
+        
+        for t in self.trail[:]:
+            t['a'] -= 10
+            if t['a'] <= 0: self.trail.remove(t)
+
+    def draw_skeleton(self):
+        # Отрисовка шлейфа
+        for t in self.trail:
+            arcade.draw_rect_filled(arcade.rect.XYWH(t['x'], t['y'], 25, 50), (0, 255, 255, t['a'] // 2))
+
+        # Основное тело (Нуар-стилистика)
+        color = COLOR_PLAYER if not self.dashing else (255, 255, 255)
+        y_off = math.sin(self.anim_pulse) * 3
+        
+        # Корпус
+        arcade.draw_rect_filled(arcade.rect.XYWH(self.center_x, self.center_y + y_off, 26, 52), color)
+        # Визор
+        eye_x = self.center_x + (8 if self.facing_right else -8)
+        arcade.draw_rect_filled(arcade.rect.XYWH(eye_x, self.center_y + 15 + y_off, 12, 6), (10, 10, 25))
+        # Контур
+        arcade.draw_rect_outline(arcade.rect.XYWH(self.center_x, self.center_y + y_off, 30, 56), color, 1)
+
+# =================================================================
+# 5. ГЛАВНЫЙ ВИД ИГРЫ (ECHO_ENGINE)
+# =================================================================
+class EchoSingularity(arcade.View):
+    def __init__(self):
+        super().__init__()
+        # Инициализация камер
+        self.cam_world = arcade.camera.Camera2D()
+        self.cam_ui = arcade.camera.Camera2D()
+        
+        # Основные системы
+        self.scene = None
+        self.player = None
+        self.physics = None
+        self.fx = EffectManager()
+        
+        # Игровые состояния
+        self.state = "MENU"
+        self.stability = 100.0
+        self.current_zone = 0
+        self.particles = []
+        
+        # Сюжетная логика
+        self.active_dialogue = False
+        self.current_node_key = ""
+        self.text_type_index = 0
+        self.flags = {"trust": 0, "echo_helped": False}
+        self.triggered_events = set()
+        
+        # Механики испытаний
+        self.watcher_active = False
+        self.watcher_open = False
+        self.watcher_timer = 0
+        self.collapse_active = False
+        self.entropy_wall_x = -2000
+        
+        # Оптимизированный текст (Arcade 3.0)
+        self.txt_speaker = arcade.Text("", 160, 220, COLOR_DANGER, 22, bold=True)
+        self.txt_dialogue = arcade.Text("", 160, 180, COLOR_UI_TEXT, 17, width=950, multiline=True)
+        self.txt_hud = arcade.Text("", 20, SCREEN_HEIGHT - 40, COLOR_PLAYER, 14, bold=True)
+
+    def setup(self, start_x=250):
+        """Полная инициализация уровня"""
+        self.scene = arcade.Scene()
+        
+        # Игрок
+        self.player = Diver()
+        self.player.center_x = start_x
+        self.player.center_y = 400
+        self.scene.add_sprite(LAYER_NAME_PLAYER, self.player)
+        
+        # Процедурная генерация мира
+        self._build_world()
+        
+        # Физика
+        self.physics = arcade.PhysicsEnginePlatformer(
+            self.player, gravity_constant=GRAVITY, walls=self.scene[LAYER_NAME_PLATFORMS]
+        )
+        
+        self.state = "PLAYING"
+        self.fx.trigger_shake(10, 0.5)
+
+    def _build_world(self):
+        """Создает огромную карту на 25000+ пикселей с 5 зонами"""
+        
+        # ЗОНА 1: ВХОД (0 - 4000)
+        self._add_block(0, 4500, 60, (20, 20, 35))
+        
+        # ЗОНА 2: ПРЫЖКИ (4500 - 9000)
+        cx = 4800
+        for _ in range(15):
+            w = random.randint(250, 550)
+            gap = random.randint(200, 350)
+            h = random.randint(60, 300)
+            self._add_block(cx, w, h, (30, 30, 50))
+            if random.random() > 0.6:
+                self._add_spike(cx + w/2, h + 25)
+            cx += w + gap
+            
+        # ЗОНА 3: ТИШИНА/НАБЛЮДАТЕЛЬ (9500 - 15000)
+        self._add_block(9500, 6000, 60, (15, 15, 25))
+        
+        # ЗОНА 4: СКАЛЫ РАСПАДА (16000 - 22000)
+        cx = 16000
+        for _ in range(20):
+            w = random.randint(150, 350)
+            gap = random.randint(150, 250)
+            self._add_block(cx, w, 60, (40, 20, 20))
+            cx += w + gap
+            
+        # ЗОНА 5: ФИНАЛ
+        self._add_block(cx, 3000, 60, (50, 50, 80))
+
+    def _add_block(self, x, w, h, color):
+        b = arcade.SpriteSolidColor(int(w), int(h), color)
+        b.center_x = x + w/2
+        b.center_y = h/2
+        self.scene.add_sprite(LAYER_NAME_PLATFORMS, b)
+
+    def _add_spike(self, x, y):
+        s = arcade.SpriteSolidColor(40, 40, COLOR_DANGER)
+        s.center_x = x
+        s.center_y = y
+        self.scene.add_sprite(LAYER_NAME_DANGER, s)
+
+    def on_draw(self):
+        self.clear()
+        
+        if self.state == "MENU":
+            self._draw_menu()
+            return
+
+        # --- МИР ---
+        self.cam_world.use()
+        
+        # Эффект тряски
+        if self.fx.shake_timer > 0:
+            self.cam_world.position = (
+                self.cam_world.position.x + random.uniform(-self.fx.shake_intensity, self.fx.shake_intensity),
+                self.cam_world.position.y + random.uniform(-self.fx.shake_intensity, self.fx.shake_intensity)
+            )
+
+        # Рендер частиц
+        for p in self.particles:
+            arcade.draw_circle_filled(p.x, p.y, p.size, (*p.color, p.life))
+
+        self.scene.draw()
+        self.player.draw_skeleton()
+        
+        # Визуал Наблюдателя
+        if 9500 < self.player.center_x < 15500:
+            self._draw_watcher_eye()
+
+        # Стена Энтропии
+        if self.collapse_active:
+            arcade.draw_rect_filled(arcade.rect.XYWH(self.entropy_wall_x - 1000, 0, 1000, 2000), (150, 0, 0, 160))
+            arcade.draw_line(self.entropy_wall_x, 0, self.entropy_wall_x, 1500, (255, 0, 0), 5)
+
+        # --- UI ---
+        self.cam_ui.use()
+        self._draw_hud()
+        
+        if self.active_dialogue:
+            self._draw_dialogue_window()
+            
+        if self.state == "GAME_OVER":
+            self._draw_death_screen()
+
+        # Глитч-полосы
+        if self.fx.glitch_active:
+            for _ in range(5):
+                gy = random.randint(0, SCREEN_HEIGHT)
+                arcade.draw_line(0, gy, SCREEN_WIDTH, gy, (0, 255, 255, 100), 2)
+
+    def _draw_menu(self):
+        arcade.draw_text("Э Х О : С И Н Г У Л Я Р Н О С Т Ь", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 50, 
+                         COLOR_PLAYER, 50, anchor_x="center", bold=True)
+        arcade.draw_text("Нажмите ENTER для начала синхронизации", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 50, 
+                         COLOR_UI_TEXT, 20, anchor_x="center")
+
+    def _draw_hud(self):
+        self.txt_hud.text = f"СТАБИЛЬНОСТЬ: {int(self.stability)}% | ДИСТАНЦИЯ: {int(self.player.center_x)}m"
+        self.txt_hud.draw()
+        # Полоска стабильности
+        arcade.draw_rect_outline(arcade.rect.XYWH(150, SCREEN_HEIGHT - 35, 200, 15), COLOR_UI_TEXT)
+        arcade.draw_rect_filled(arcade.rect.XYWH(50 + self.stability, SCREEN_HEIGHT - 35, self.stability*2, 11), COLOR_PLAYER)
+
+    def _draw_watcher_eye(self):
+        ex, ey = self.cam_world.position.x, SCREEN_HEIGHT - 120
+        c = COLOR_DANGER if self.watcher_open else (60, 60, 80)
+        arcade.draw_ellipse_outline(ex, ey, 240, 120, COLOR_UI_TEXT, 2)
+        arcade.draw_circle_filled(ex, ey, 45, c)
+        if self.watcher_open:
+            arcade.draw_text("ОБНАРУЖЕНИЕ...", ex, ey - 100, COLOR_DANGER, 24, anchor_x="center", bold=True)
+
+    def _draw_dialogue_window(self):
+        node = STORY_DATA[self.current_node_key]
+        # Фон
+        arcade.draw_rect_filled(arcade.rect.XYWH(SCREEN_WIDTH/2, 140, 1050, 200), (10, 10, 20, 245))
+        arcade.draw_rect_outline(arcade.rect.XYWH(SCREEN_WIDTH/2, 140, 1050, 200), COLOR_UI_ACCENT, 2)
+        
+        self.txt_speaker.text = node.speaker
+        self.txt_speaker.draw()
+        
+        self.text_type_index = min(len(node.text), self.text_type_index + 0.5)
+        self.txt_dialogue.text = node.text[:int(self.text_type_index)]
+        self.txt_dialogue.draw()
+        
+        if int(self.text_type_index) >= len(node.text):
+            for i, choice in enumerate(node.choices):
+                arcade.draw_text(f"[{i+1}] {choice.text}", 180, 80 - i*30, arcade.color.CYAN, 15)
+
+    def _draw_death_screen(self):
+        arcade.draw_rect_filled(arcade.rect.XYWH(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, SCREEN_WIDTH, SCREEN_HEIGHT), (20, 0, 0, 180))
+        arcade.draw_text("СВЯЗЬ РАЗОРВАНА", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 30, COLOR_DANGER, 45, anchor_x="center", bold=True)
+        arcade.draw_text("Нажмите 'R' для ресинхронизации", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 40, COLOR_UI_TEXT, 20, anchor_x="center")
+
+    def on_update(self, delta_time):
+        if self.state != "PLAYING" or self.active_dialogue: return
+
+        # 1. Физика и Камера
+        self.physics.update()
+        self.player.update_animation(delta_time)
+        self.fx.update(delta_time)
+        
+        target_pos = (self.player.center_x, self.player.center_y + 150)
+        self.cam_world.position = arcade.math.lerp_2d(self.cam_world.position, target_pos, 0.1)
+
+        # 2. Частицы
+        if random.random() > 0.8:
+            self.particles.append(Particle(self.player.center_x + random.uniform(-600, 600), 
+                                           self.player.center_y + random.uniform(-200, 500)))
+        for p in self.particles[:]:
+            p.update()
+            if p.life <= 0: self.particles.remove(p)
+
+        # 3. Триггеры сюжета
+        px = self.player.center_x
+        if px > 500 and "intro_1" not in self.triggered_events: self._trigger_diag("intro_1")
+        elif px > 6500 and "echo_1" not in self.triggered_events: self._trigger_diag("echo_1")
+        elif px > 9800 and "watcher_pre" not in self.triggered_events: self._trigger_diag("watcher_pre")
+        elif px > 16500 and "collapse_start" not in self.triggered_events: 
+            self._trigger_diag("collapse_start")
+            self.collapse_active = True
+            self.entropy_wall_x = px - 1000
+        elif px > 24500: self._trigger_diag("final_node")
+
+        # 4. Механика Наблюдателя (Сектор 3)
+        if 10000 < px < 15500:
+            self.watcher_timer += delta_time
+            # Цикл: 4 сек спит, 2 сек смотрит
+            cycle = self.watcher_timer % 6.0
+            self.watcher_open = cycle > 4.0
+            
+            if self.watcher_open:
+                if abs(self.player.change_x) > 0.5 or abs(self.player.change_y) > 0.5:
+                    self._die()
+
+        # 5. Механика Побега (Сектор 4)
+        if self.collapse_active:
+            self.entropy_wall_x += 6.5 # Базовая скорость удаления реальности
+            if self.entropy_wall_x > self.player.center_x - 15:
+                self._die()
+
+        # 6. Опасности
+        if self.player.center_y < -500: self._die()
+        if arcade.check_for_collision_with_list(self.player, self.scene[LAYER_NAME_DANGER]):
+            self._die()
+
+    def _trigger_diag(self, key):
+        self.triggered_events.add(key)
+        self.current_node_key = key
+        self.active_dialogue = True
+        self.text_type_index = 0
+        self.player.change_x = 0
+        # Сохранение прогресса
+        self._save_game()
+
+    def _die(self):
+        self.fx.trigger_shake(30, 0.4)
+        self.fx.trigger_glitch(0.5)
+        self.state = "GAME_OVER"
+
+    def _save_game(self):
+        data = {"x": self.player.center_x, "stability": self.stability, "flags": self.flags}
+        with open("save_echo.json", "w") as f:
+            json.dump(data, f)
+
+    def on_key_press(self, key, modifiers):
+        if self.state == "MENU" and key == arcade.key.ENTER:
+            self.setup()
+            
+        elif self.state == "PLAYING":
+            if not self.active_dialogue:
+                # Прыжок
+                if key in (arcade.key.W, arcade.key.SPACE) and self.physics.can_jump():
+                    self.player.change_y = PLAYER_JUMP_SPEED
+                # Движение
+                if key == arcade.key.A: self.player.change_x = -PLAYER_MOVE_SPEED
+                if key == arcade.key.D: self.player.change_x = PLAYER_MOVE_SPEED
+                # Спринт
+                if key == arcade.key.LSHIFT: 
+                    self.player.sprinting = True
+                # Рывок (Dash) - потребляет стабильность
+                if key == arcade.key.E and self.stability > 10:
+                    self.player.dashing = True
+                    self.player.change_x *= 3
+                    self.stability -= 5
+                    self.fx.trigger_shake(5, 0.2)
+            else:
+                # Управление диалогом
+                node = STORY_DATA[self.current_node_key]
+                idx = -1
+                if key == arcade.key.KEY_1: idx = 0
+                if key == arcade.key.KEY_2: idx = 1
+                
+                if 0 <= idx < len(node.choices):
+                    c = node.choices[idx]
+                    self.stability = max(0, min(100, self.stability + c.impact_stability))
+                    self.flags["trust"] += c.impact_trust
+                    
+                    if "finish" in c.next_node:
+                        print(f"ИГРА ЗАВЕРШЕНА: {c.next_node}")
+                        arcade.exit()
+                    elif c.next_node == "end_diag":
+                        self.active_dialogue = False
+                    else:
+                        self.current_node_key = c.next_node
+                        self.text_type_index = 0
+
+        elif self.state == "GAME_OVER" and key == arcade.key.R:
+            # Загрузка с последнего чекпоинта
+            start_x = 250
+            if os.path.exists("save_echo.json"):
+                with open("save_echo.json", "r") as f:
+                    d = json.load(f)
+                    start_x = d["x"] - 200
+            self.setup(max(start_x, 250))
+
+    def on_key_release(self, key, modifiers):
+        if key in (arcade.key.A, arcade.key.D):
+            self.player.change_x = 0
+        if key == arcade.key.LSHIFT:
+            self.player.sprinting = False
+        if key == arcade.key.E:
+            self.player.dashing = False
+
+# --- ТОЧКА ЗАПУСКА ---
+def main():
+    window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    game = EchoSingularity()
+    window.show_view(game)
+    arcade.run()
+
+if __name__ == "__main__":
+    main()
