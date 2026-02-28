@@ -7,6 +7,7 @@ import os
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 SCREEN_TITLE = "Scary tale"
+The_authors = "Воропаев Артём и Кузнецов Максим"
 
 WORLD_LEFT = -500
 WORLD_RIGHT = 2200
@@ -18,10 +19,20 @@ LEVELS_FILE = "Scary_tale_Levels.json"
 
 def load_levels():
     if not os.path.exists(LEVELS_FILE):
-        data = {"tutorial": True,
-                "tutorial_completed": False,
-                "level1": False,
-                "level1_completed": False}
+        data = {
+            "level1": True,
+            "level1_completed": False,
+
+            "level2": False,
+            "level2_completed": False,
+
+            "level3": False,
+            "level3_completed": False,
+
+            "level4": False,
+            "level4_completed": False
+        }
+
         with open(LEVELS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -34,7 +45,7 @@ def save_levels(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def unlock_level(name: str):
+def unlock_level(name):
     data = load_levels()
     data[name] = True
     save_levels(data)
@@ -307,7 +318,7 @@ class WorldView(arcade.View):
 
 ##############################################################
 # Глава 1 - Сломанный механизм
-class TutorialView(WorldView):
+class Level1View(WorldView):
     def __init__(self):
         super().__init__()
         self.LEVER_X = 500
@@ -400,8 +411,8 @@ class TutorialView(WorldView):
         # Конец - в меню
         if self.lever_pulled and self.player_x > self.GATE_X + 60:
             data = load_levels()
-            data["tutorial_completed"] = True
-            data["level1"] = True
+            data["level1_completed"] = True
+            data["level2"] = True
             save_levels(data)
             self.window.show_view(LevelSelectView())
 
@@ -429,7 +440,7 @@ class TutorialView(WorldView):
 
         # Возрождение
         if self.dead and key == arcade.key.R:
-            self.window.show_view(TutorialView())
+            self.window.show_view(Level1View())
             return
 
         # ESC в меню
@@ -465,11 +476,11 @@ class TutorialView(WorldView):
 ####################################################################
 # Глава 2 - Страж леса
 
-class Level1View(WorldView):
+class Level2View(WorldView):
     def __init__(self):
         super().__init__()
         self.bush_x = 900
-        self.bush_y = GROUND_Y
+        self.bush_y = GROUND_Y - 50
 
         self.monster_x = 1300
         self.monster_y = GROUND_Y + 10
@@ -513,7 +524,7 @@ class Level1View(WorldView):
         self.draw_monster()
 
         arcade.draw_rect_filled(
-            arcade.rect.XYWH(self.bush_x, self.bush_y + 35, 140, 70),
+            arcade.rect.XYWH(self.bush_x, self.bush_y + 50, 140, 140),
             (30, 80, 40, 180)
         )
 
@@ -547,7 +558,8 @@ class Level1View(WorldView):
 
         if self.player_x > self.exit_x:
             data = load_levels()
-            data["level1_completed"] = True
+            data["level2_completed"] = True
+            data["level3"] = True
             save_levels(data)
             self.window.show_view(LevelSelectView())
     # ------------------------------------------------------------------
@@ -571,7 +583,7 @@ class Level1View(WorldView):
             return
 
         if self.dead and key == arcade.key.R:
-            self.window.show_view(Level1View())
+            self.window.show_view(Level2View())
             return
 
         if key == arcade.key.ESCAPE:
@@ -591,6 +603,183 @@ class Level1View(WorldView):
                 else:
                     self.show_hint("Слишком темно")
 
+####################################################################
+# Глава 3 - Лес отражений
+
+class Level3View(WorldView):
+    def __init__(self):
+        super().__init__()
+
+        # Клон
+        self.clone_offset_x = 80
+        self.clone_x = self.player_x + self.clone_offset_x
+        self.clone_y = self.player_y
+
+        # Плиты
+        self.player_plate_x = 800
+        self.clone_plate_x = 970
+        self.plate_y = GROUND_Y - 50
+
+        # Дверь
+        self.door_x = 1700
+        self.door_y = GROUND_Y
+        self.door_drop = 0
+        self.door_max_drop = 420
+        self.door_open = False
+
+        # Выход
+        self.exit_x = 2000
+        # Подсказка Глава 3
+        self.show_hint("Вы встретили своё отражение, а отражения всегда повторяют ваши движения...")
+    # --------------------------------------------------------------
+    def on_draw(self):
+        self.clear()
+        self.draw_parallax_background()
+
+        self.cam_world.position = (self.player_x, SCREEN_HEIGHT / 2)
+        self.cam_world.use()
+
+        self.draw_left_wall()
+
+        # Плита игрока
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(self.player_plate_x, self.plate_y + 10, 140, 20),
+            (120, 120, 120)
+        )
+
+        # Плита клона
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(self.clone_plate_x, self.plate_y + 10, 140, 20),
+            (120, 120, 120)
+        )
+
+        # Дверь
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(self.door_x, self.door_y + 150 - self.door_drop, 50, 400),
+            (30, 30, 35)
+        )
+
+        # Клон
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(self.clone_x, self.clone_y - 20 + 15, 32, 45),
+            (120, 120, 150)
+        )
+        arcade.draw_circle_filled(self.clone_x, self.clone_y - 20 + 55, 26, (200, 200, 220))
+        arcade.draw_circle_filled(self.clone_x - 6, self.clone_y - 20 + 55, 4, (0, 0, 0))
+        arcade.draw_circle_filled(self.clone_x + 6, self.clone_y - 20 + 55, 4, (0, 0, 0))
+
+        self.draw_lars()
+        self.draw_ui()
+
+    # --------------------------------------------------------------
+    def on_update(self, dt):
+        if self.dead or self.hint_active or self.ask_exit_menu or self.ask_exit_game:
+            return
+
+        # Движение игрока
+        self.update_player(dt)
+
+        # ----------------------------------------------------------
+        # ДВИЖЕНИЕ КЛОНА (НЕ зависит от того, упёрся ли игрок)
+        # ----------------------------------------------------------
+        if self.change_x < 0:      # игрок влево
+            clone_dx = 6           # клон вправо
+        elif self.change_x > 0:    # игрок вправо
+            clone_dx = -6          # клон влево
+        else:
+            clone_dx = 0
+
+        self.clone_x += clone_dx
+
+        # Клон НЕ прыгает
+        self.clone_y = GROUND_Y
+
+        # Клон упирается в левую границу мира
+        if self.clone_x < MIN_X_LIMIT:
+            self.clone_x = MIN_X_LIMIT
+
+        # ----------------------------------------------------------
+        # СТОЛКНОВЕНИЕ КЛОНА С ДВЕРЬЮ (как у игрока)
+        # ----------------------------------------------------------
+        door_left = self.door_x - 25
+        door_right = self.door_x + 25
+
+        if not self.door_open:
+            if door_left < self.clone_x < door_right:
+                # Клон упирается в дверь
+                self.clone_x = door_left
+
+        # ----------------------------------------------------------
+        # СМЕРТЬ ОТ КАСАНИЯ КЛОНА
+        # ----------------------------------------------------------
+        if abs(self.player_x - self.clone_x) < 40 and abs(self.player_y - self.clone_y) < 50:
+            self.kill_player()
+
+        # ----------------------------------------------------------
+        # БЛОКИРОВКА ИГРОКА ДВЕРЬЮ
+        # ----------------------------------------------------------
+        if not self.door_open:
+            if door_left < self.player_x < door_right:
+                self.player_x = door_left - 5
+
+        # ----------------------------------------------------------
+        # ПЛИТЫ
+        # ----------------------------------------------------------
+        player_on_plate = abs(self.player_x - self.player_plate_x) < 70
+        clone_on_plate = abs(self.clone_x - self.clone_plate_x) < 70
+
+        # Если оба стоят — дверь опускается вниз
+        if player_on_plate and clone_on_plate and not self.door_open:
+            self.door_drop += 5
+            if self.door_drop >= self.door_max_drop:
+                self.door_open = True
+                self.show_hint("Дверь открылась!")
+
+        # ----------------------------------------------------------
+        # ВЫХОД
+        # ----------------------------------------------------------
+        if self.door_open and self.player_x > self.exit_x + 60:
+            data = load_levels()
+            data["level3_completed"] = True
+            data["level4"] = True
+            save_levels(data)
+            self.window.show_view(LevelSelectView())
+
+    # --------------------------------------------------------------
+    def on_key_press(self, key, modifiers):
+        if self.ask_exit_menu:
+            if key == arcade.key.Y:
+                self.window.show_view(LevelSelectView())
+            elif key == arcade.key.N:
+                self.ask_exit_menu = False
+            return
+
+        if self.ask_exit_game:
+            if key == arcade.key.Y:
+                arcade.exit()
+            elif key == arcade.key.N:
+                self.ask_exit_game = False
+            return
+
+        if self.hint_active:
+            self.hint_active = False
+            return
+
+        if self.dead and key == arcade.key.R:
+            self.window.show_view(Level3View())
+            return
+
+        if key == arcade.key.ESCAPE:
+            self.ask_exit_menu = True
+            return
+
+        # Управление игроком
+        if key == arcade.key.A:
+            self.change_x = -6
+        elif key == arcade.key.D:
+            self.change_x = 6
+        elif key == arcade.key.SPACE and self.player_y <= GROUND_Y + 5:
+            self.change_y = 16
 
 ################################################################
 # Главное меню
@@ -600,6 +789,7 @@ class LevelSelectView(arcade.View):
         super().__init__()
         self.levels = load_levels()
         self.ask_exit_game = False
+        self.show_updates = False
 
     def on_draw(self):
         self.clear((10, 10, 15))
@@ -611,8 +801,10 @@ class LevelSelectView(arcade.View):
 
         y = 380
         entries = [
-            ("[1] Глава 1: Сломанный механизм", "tutorial"),
-            ("[2] Глава 2: Страж леса", "level1"),
+            ("[1] Глава 1: Сломанный механизм", "level1"),
+            ("[2] Глава 2: Страж леса", "level2"),
+            ("[3] Глава 3: Лес отражений", "level3"),
+            ("[4] Глава 4: Домик на опушке", "level4"),
         ]
 
         for text, key in entries:
@@ -624,10 +816,12 @@ class LevelSelectView(arcade.View):
             y -= 60
 
         # Прогресс
-        total = 2
+        total = 4
         completed = 0
-        if self.levels.get("tutorial_completed"): completed += 1
         if self.levels.get("level1_completed"): completed += 1
+        if self.levels.get("level2_completed"): completed += 1
+        if self.levels.get("level3_completed"): completed += 1
+        if self.levels.get("level4_completed"): completed += 1
 
         progress = completed / total
 
@@ -672,8 +866,74 @@ class LevelSelectView(arcade.View):
             arcade.draw_text("[Y] Да     [N] Нет",
                              SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20,
                              (200, 200, 200), 18, anchor_x="center")
+        # Кнопка Обновлений
+        arcade.draw_rect_filled(
+            arcade.rect.XYWH(SCREEN_WIDTH - 120, SCREEN_HEIGHT - 40, 180, 40),
+            (30, 30, 40)
+        )
+        arcade.draw_rect_outline(
+            arcade.rect.XYWH(SCREEN_WIDTH - 120, SCREEN_HEIGHT - 40, 180, 40),
+            (120, 200, 200),
+            2
+        )
+        arcade.draw_text(
+            "[0] Обновления",
+            SCREEN_WIDTH - 120, SCREEN_HEIGHT - 40,
+            (220, 220, 230), 18,
+            anchor_x="center", anchor_y="center"
+        )
+        # Окно обновлений
+        if self.show_updates:
+            arcade.draw_rect_filled(
+                arcade.rect.XYWH(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 700, 400),
+                (10, 10, 20, 240)
+            )
+            arcade.draw_rect_outline(
+                arcade.rect.XYWH(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 700, 400),
+                (0, 200, 200),
+                2
+            )
+
+            arcade.draw_text(
+                "Обновления игры",
+                SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 150,
+                (220, 220, 230), 26,
+                anchor_x="center"
+            )
+            # Обновления содержимое
+            lines = ["- Добавлены ещё комментарии по всему коду",
+                     "- Исправлены имена классов уровней",
+                     "- Добавлена кнопка обновлений",
+                     "- Добавлена возможность выбора уровней и ",
+                     "   кнопки обновлений мышкой",
+                     "- В главе 2 исправлена текстура куста",
+                     "- Добавлена Глава 3",
+                     "- Добавлена заглушка на Главу 4"]
+
+            start_x = SCREEN_WIDTH / 2 - 320
+            start_y = SCREEN_HEIGHT / 2 + 90
+            line_height = 28
+            for i, line in enumerate(lines):
+                arcade.draw_text( line, start_x, start_y - i * line_height, (200, 200, 210), 18)
+
+            arcade.draw_text(
+                "[Нажмите любую клавишу или мышку, чтобы закрыть]",
+                SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 180,
+                (160, 160, 180), 16,
+                anchor_x="center"
+            )
 
     def on_key_press(self, key, modifiers):
+        # Меню обновлений
+        if self.show_updates:
+            self.show_updates = False
+            return
+
+        if key == arcade.key.KEY_0:
+            self.show_updates = True
+            return
+
+        # Выход из игры
         if self.ask_exit_game:
             if key == arcade.key.Y:
                 arcade.exit()
@@ -685,11 +945,55 @@ class LevelSelectView(arcade.View):
             self.ask_exit_game = True
             return
 
+        # Основные кнопки
         if key == arcade.key.KEY_1:
-            self.window.show_view(TutorialView())
-        if key == arcade.key.KEY_2 and self.levels.get("level1", False):
             self.window.show_view(Level1View())
+        if key == arcade.key.KEY_2 and self.levels.get("level2", False):
+            self.window.show_view(Level2View())
+        if key == arcade.key.KEY_3 and self.levels.get("level3", False):
+            self.window.show_view(Level3View())
+        # if key == arcade.key.KEY_4 and self.levels.get("level4", False):
+        #     self.window.show_view(Level4View())
 
+
+    # Выбор глав мышкой
+    def on_mouse_press(self, x, y, button, modifiers):
+        # Если окно обновлений открыто
+        if self.show_updates:
+            self.show_updates = False
+            return
+        # Кнопка Обновлений
+        if SCREEN_WIDTH - 210 < x < SCREEN_WIDTH - 30 and SCREEN_HEIGHT - 60 < y < SCREEN_HEIGHT - 20:
+            self.show_updates = True
+            return
+
+        # Выход из игры
+        if self.ask_exit_game:
+            return
+
+        start_y = 380
+        step = 60
+        entries = [
+            ("[1] Глава 1: Сломанный механизм", "level1"),
+            ("[2] Глава 2: Страж леса", "level2"),
+            ("[3] Глава 3: Лес отражений", "level3"),
+            ("[4] Глава 4: Домик на опушке", "level4"),
+        ]
+
+        for i, (_, key) in enumerate(entries):
+            row_y = start_y - i * step
+            if 260 <= x <= 900 and row_y - 10 <= y <= row_y + 30:
+                if not self.levels.get(key, False):
+                    return
+                if key == "level1":
+                    self.window.show_view(Level1View())
+                elif key == "level2":
+                    self.window.show_view(Level2View())
+                elif key == "level3":
+                    self.window.show_view(Level3View())
+                # elif key == "level4":
+                #     self.window.show_view(Level4View())
+                return
 
 #########################################################################
 # Интро
@@ -739,6 +1043,9 @@ class IntroView(arcade.View):
             self.alpha = 240 + 10 * math.sin(self.timer * 2)
 
     def on_key_press(self, key, modifiers):
+        self.window.show_view(LevelSelectView())
+
+    def on_mouse_press(self, x, y, button, modifiers):
         self.window.show_view(LevelSelectView())
 
 
