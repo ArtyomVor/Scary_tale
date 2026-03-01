@@ -268,7 +268,7 @@ class WorldView(arcade.View):
             arcade.draw_text("ТЫ ПОТЕРЯЛСЯ В СКАЗКЕ",
                              SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20,
                              (220, 60, 60), 40, anchor_x="center")
-            arcade.draw_text("Нажми R, чтобы возродиться",
+            arcade.draw_text("Нажмите R, чтобы возродиться",
                              SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 40,
                              (210, 210, 230), 20, anchor_x="center")
 
@@ -485,7 +485,7 @@ class Level2View(WorldView):
         self.monster_x = 1300
         self.monster_y = GROUND_Y + 10
 
-        self.monster_left = WORLD_LEFT - 300
+        self.monster_left = WORLD_LEFT + 500
         self.monster_right = 1700
         self.monster_speed = 2
         self.monster_phase = 0
@@ -679,7 +679,8 @@ class Level3View(WorldView):
         # Движение игрока
         self.update_player(dt)
 
-        # Движение клона
+        # ----------------------------------------------------------
+        # ДВИЖЕНИЕ КЛОНА (НЕ зависит от того, упёрся ли игрок)
         if self.change_x < 0:      # игрок влево
             clone_dx = 6           # клон вправо
         elif self.change_x > 0:    # игрок вправо
@@ -696,7 +697,9 @@ class Level3View(WorldView):
         if self.clone_x < MIN_X_LIMIT:
             self.clone_x = MIN_X_LIMIT
 
-        # Клон и дверь - стоп
+        # ----------------------------------------------------------
+        # СТОЛКНОВЕНИЕ КЛОНА С ДВЕРЬЮ (как у игрока)
+        # ----------------------------------------------------------
         door_left = self.door_x - 25
         door_right = self.door_x + 25
 
@@ -705,20 +708,26 @@ class Level3View(WorldView):
                 # Клон упирается в дверь
                 self.clone_x = door_left
 
-        # Смерть
+        # ----------------------------------------------------------
+        # СМЕРТЬ ОТ КАСАНИЯ КЛОНА
+        # ----------------------------------------------------------
         if abs(self.player_x - self.clone_x) < 40 and abs(self.player_y - self.clone_y) < 50:
             self.kill_player()
 
-        # Дверь - стоп
+        # ----------------------------------------------------------
+        # БЛОКИРОВКА ИГРОКА ДВЕРЬЮ
+        # ----------------------------------------------------------
         if not self.door_open:
             if door_left < self.player_x < door_right:
                 self.player_x = door_left - 5
 
-        # Плиты
+        # ----------------------------------------------------------
+        # ПЛИТЫ
+        # ----------------------------------------------------------
         player_on_plate = abs(self.player_x - self.player_plate_x) < 70
         clone_on_plate = abs(self.clone_x - self.clone_plate_x) < 70
 
-        # Дверь опускается
+        # Если оба стоят — дверь опускается вниз
         if player_on_plate and clone_on_plate and not self.door_open:
             self.door_drop += 5
             if self.door_drop >= self.door_max_drop:
@@ -761,7 +770,7 @@ class Level3View(WorldView):
             self.ask_exit_menu = True
             return
 
-        # Управление
+        # Управление игроком
         if key == arcade.key.A:
             self.change_x = -6
         elif key == arcade.key.D:
@@ -888,7 +897,7 @@ class LevelSelectView(arcade.View):
                 (220, 220, 230), 26,
                 anchor_x="center"
             )
-            # Обновления содержимое
+            # Обновления - содержимое
             lines = ["- Добавлены ещё комментарии по всему коду",
                      "- Исправлены имена классов уровней",
                      "- Добавлена кнопка обновлений",
