@@ -679,9 +679,7 @@ class Level3View(WorldView):
         # Движение игрока
         self.update_player(dt)
 
-        # ----------------------------------------------------------
-        # ДВИЖЕНИЕ КЛОНА (НЕ зависит от того, упёрся ли игрок)
-        # ----------------------------------------------------------
+        # Движение клона
         if self.change_x < 0:      # игрок влево
             clone_dx = 6           # клон вправо
         elif self.change_x > 0:    # игрок вправо
@@ -698,9 +696,7 @@ class Level3View(WorldView):
         if self.clone_x < MIN_X_LIMIT:
             self.clone_x = MIN_X_LIMIT
 
-        # ----------------------------------------------------------
-        # СТОЛКНОВЕНИЕ КЛОНА С ДВЕРЬЮ (как у игрока)
-        # ----------------------------------------------------------
+        # Клон и дверь - стоп
         door_left = self.door_x - 25
         door_right = self.door_x + 25
 
@@ -709,35 +705,27 @@ class Level3View(WorldView):
                 # Клон упирается в дверь
                 self.clone_x = door_left
 
-        # ----------------------------------------------------------
-        # СМЕРТЬ ОТ КАСАНИЯ КЛОНА
-        # ----------------------------------------------------------
+        # Смерть
         if abs(self.player_x - self.clone_x) < 40 and abs(self.player_y - self.clone_y) < 50:
             self.kill_player()
 
-        # ----------------------------------------------------------
-        # БЛОКИРОВКА ИГРОКА ДВЕРЬЮ
-        # ----------------------------------------------------------
+        # Дверь - стоп
         if not self.door_open:
             if door_left < self.player_x < door_right:
                 self.player_x = door_left - 5
 
-        # ----------------------------------------------------------
-        # ПЛИТЫ
-        # ----------------------------------------------------------
+        # Плиты
         player_on_plate = abs(self.player_x - self.player_plate_x) < 70
         clone_on_plate = abs(self.clone_x - self.clone_plate_x) < 70
 
-        # Если оба стоят — дверь опускается вниз
+        # Дверь опускается
         if player_on_plate and clone_on_plate and not self.door_open:
             self.door_drop += 5
             if self.door_drop >= self.door_max_drop:
                 self.door_open = True
                 self.show_hint("Дверь открылась!")
 
-        # ----------------------------------------------------------
-        # ВЫХОД
-        # ----------------------------------------------------------
+        # Выход
         if self.door_open and self.player_x > self.exit_x + 60:
             data = load_levels()
             data["level3_completed"] = True
@@ -773,7 +761,7 @@ class Level3View(WorldView):
             self.ask_exit_menu = True
             return
 
-        # Управление игроком
+        # Управление
         if key == arcade.key.A:
             self.change_x = -6
         elif key == arcade.key.D:
