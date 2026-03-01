@@ -268,7 +268,7 @@ class WorldView(arcade.View):
             arcade.draw_text("ТЫ ПОТЕРЯЛСЯ В СКАЗКЕ",
                              SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20,
                              (220, 60, 60), 40, anchor_x="center")
-            arcade.draw_text("Нажми R, чтобы возродиться",
+            arcade.draw_text("Нажмите R, чтобы возродиться",
                              SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 40,
                              (210, 210, 230), 20, anchor_x="center")
 
@@ -485,7 +485,7 @@ class Level2View(WorldView):
         self.monster_x = 1300
         self.monster_y = GROUND_Y + 10
 
-        self.monster_left = WORLD_LEFT - 300
+        self.monster_left = WORLD_LEFT + 500
         self.monster_right = 1700
         self.monster_speed = 2
         self.monster_phase = 0
@@ -894,7 +894,9 @@ class LevelSelectView(arcade.View):
                      "- Добавлена кнопка обновлений",
                      "- Добавлена возможность выбора уровней и ",
                      "   кнопки обновлений мышкой",
+                     "- Исправлен текст окна смерти",
                      "- В главе 2 исправлена текстура куста",
+                     "- В главе 2 исправлено, чтобы монст не выходил за левую границу мира",
                      "- Добавлена Глава 3",
                      "- Добавлена заглушка на Главу 4"]
 
